@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  monitoring-agent:
+    build: ./agent
+    container_name: monitoring-agent
+    restart: always
+    environment:
+      - DB_HOST=postgres-db
+      - DB_NAME=monitoring_db
+      - DB_USER=user
+      - DB_PASSWORD=password
+    depends_on:
+      - postgres-db
+    networks:
+      - monitoring-net
+
+  postgres-db:
+    image: postgres:13
+    container_name: postgres-db
+    restart: always
+    environment:
+      - POSTGRES_DB=monitoring_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - monitoring-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - postgres-db
+    networks:
+      - monitoring-net
+
+volumes:
+  postgres-data:
+  grafana-data:
+
+networks:
+  monitoring-net:
+    driver: bridge
