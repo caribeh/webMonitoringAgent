@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   monitoring-agent:
     build: ./agent
@@ -36,7 +34,15 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      # Mapeia os arquivos de provisioning para dentro do container
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
       - grafana-data:/var/lib/grafana
+    environment:
+      # Passa as credenciais do DB para o Grafana usar no provisioning
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=monitoring_db
+
     depends_on:
       - postgres-db
     networks:
