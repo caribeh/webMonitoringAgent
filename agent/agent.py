@@ -5,9 +5,10 @@ import psycopg2
 import subprocess
 import re
 
+
 # --- Configurações ---
 TARGETS = ["google.com", "youtube.com", "rnp.br", "registro.br"]
-INTERVALO_SEGUNDOS = 10
+INTERVALO_SEGUNDOS = 60
 
 # Configs do DB vindas do ambiente Docker
 DB_HOST = os.getenv("DB_HOST", "postgres-db")
@@ -15,10 +16,13 @@ DB_NAME = os.getenv("DB_NAME", "monitoring_db")
 DB_USER = os.getenv("DB_USER", "user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
 
-# Cabeçalho para simular um navegador real
+# Cabeçalho para simular um navegador real, quebrado em várias linhas
 HTTP_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                   'AppleWebKit/537.36 (KHTML, like Gecko) '
+                   'Chrome/91.0.4472.124 Safari/537.36')
 }
+
 
 def get_db_connection():
     """Tenta conectar ao banco de dados até conseguir."""
@@ -33,9 +37,10 @@ def get_db_connection():
             )
             print("Conexão com o PostgreSQL estabelecida.")
         except psycopg2.OperationalError as e:
-            print(f"Aguardando o banco de dados ficar disponível... ({e})")
+            print(f"Aguardando o banco de dados... ({e})")
             time.sleep(5)
     return conn
+
 
 def measure_ping(host):
     """
@@ -56,7 +61,8 @@ def measure_ping(host):
             return None, None
 
         output = result.stdout
-        rtt_line = re.search(r"rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms", output)
+        rtt_pattern = r"rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/"
+        rtt_line = re.search(rtt_pattern, output)
         packet_loss_line = re.search(r"(\d+)% packet loss", output)
 
         rtt_avg = float(rtt_line.group(2)) if rtt_line else None
@@ -68,6 +74,7 @@ def measure_ping(host):
         print(f"Erro ao executar ping para {host}: {e}")
         return None, None
 
+
 def measure_website_load(url):
     """Mede o tempo de carregamento de uma URL e pega o status code."""
     full_url = f"https://{url}"
@@ -78,6 +85,7 @@ def measure_website_load(url):
         print(f"Erro ao acessar {full_url}: {e}")
         return None, None
 
+
 def salvar_metricas(db_conn, target, ping_data, web_data):
     """
     Salva os resultados dos testes de ping e web no banco de dados.
@@ -87,26 +95,28 @@ def salvar_metricas(db_conn, target, ping_data, web_data):
     load_time, status_code = web_data
 
     try:
-        # Usar 'with' garante que o cursor seja fechado automaticamente
         with db_conn.cursor() as cursor:
             if latency is not None:
-                cursor.execute(
-                    "INSERT INTO ping_metrics (target, rtt_avg_ms, packet_loss_percent) VALUES (%s, %s, %s)",
-                    (target, latency, packet_loss)
-                )
+                sql_ping = """
+                    INSERT INTO ping_metrics (target, rtt_avg_ms,
+                    packet_loss_percent) VALUES (%s, %s, %s)
+                """
+                cursor.execute(sql_ping, (target, latency, packet_loss))
             if load_time is not None:
-                cursor.execute(
-                    "INSERT INTO web_metrics (url, load_time_ms, status_code) VALUES (%s, %s, %s)",
-                    (f"https://{target}", load_time, status_code)
-                )
+                sql_web = """
+                    INSERT INTO web_metrics (url, load_time_ms,
+                    status_code) VALUES (%s, %s, %s)
+                """
+                cursor.execute(sql_web, (f"https://{target}", load_time,
+                                         status_code))
         db_conn.commit()
         print("  -> Dados salvos no banco.")
         return True
     except (Exception, psycopg2.Error) as error:
         print(f"!! Erro ao salvar no banco de dados: {error}")
-        # Desfaz a transação em caso de erro
         db_conn.rollback()
         return False
+
 
 def main():
     """Lógica principal do agente de monitoramento."""
@@ -118,30 +128,30 @@ def main():
         for target in TARGETS:
             print(f"Testando alvo: {target}")
 
-            # 1. Coleta as métricas
             ping_results = measure_ping(target)
             web_results = measure_website_load(target)
-            
-            # Imprime os resultados no console
+
             if ping_results[0] is not None:
-                print(f"  -> Ping: Latência={ping_results[0]:.2f}ms, Perda={ping_results[1]}%")
+                lat, loss = ping_results
+                print(f"  -> Ping: Latência={lat:.2f}ms, Perda={loss}%")
             else:
                 print("  -> Ping: Falhou")
-            
+
             if web_results[0] is not None:
-                print(f"  -> Web: Tempo={web_results[0]:.2f}ms, Status={web_results[1]}")
+                load, status = web_results
+                print(f"  -> Web: Tempo={load:.2f}ms, Status={status}")
             else:
                 print("  -> Web: Falhou")
 
-            # 2. Salva as métricas no banco de dados
-            if not salvar_metricas(db_conn, target, ping_results, web_results):
-                # Se a escrita falhar, a conexão pode ter caído. Tenta reconectar.
+            if not salvar_metricas(db_conn, target, ping_results,
+                                   web_results):
                 print("Tentando reconectar ao banco de dados...")
                 if db_conn:
                     db_conn.close()
                 db_conn = get_db_connection()
 
         time.sleep(INTERVALO_SEGUNDOS)
+
 
 if __name__ == "__main__":
     try:
