@@ -6,8 +6,8 @@ import subprocess
 import re
 
 # --- Configurações ---
-TARGETS = ["google.com", "youtube.com", "rnp.br", "registro.br", "brunocaribe.com.br"]
-INTERVALO_SEGUNDOS = 60
+TARGETS = ["google.com", "youtube.com", "rnp.br", "registro.br"]
+INTERVALO_SEGUNDOS = 10
 
 # Configs do DB vindas do ambiente Docker
 DB_HOST = os.getenv("DB_HOST", "postgres-db")

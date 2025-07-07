@@ -1,6 +1,8 @@
-# Prova Prática - Agente de Monitoramento Web
+# Agente de Monitoramento Web (webmonitoringagent)
 
 Este projeto implementa uma solução de monitoramento de rede e web, composta por um agente em Python, um banco de dados PostgreSQL e uma plataforma de visualização Grafana, todos orquestrados com Docker Compose.
+
+A solução foi projetada para ser iniciada com um único comando, com provisionamento automático do Data Source e de um Dashboard inicial no Grafana.
 
 ## High-Level Design (HLD)
 
@@ -8,7 +10,7 @@ A arquitetura da solução é dividida em três componentes principais que se co
 
 1.  **Agente de Monitoramento (`monitoring-agent`)**:
     * Uma aplicação Python containerizada.
-    * Responsável por executar testes periódicos de rede contra alvos pré-definidos.
+    * Responsável por executar testes periódicos de rede contra alvos pré-definidos (`google.com`, `youtube.com`, `rnp.br`, etc.).
     * Testes realizados:
         * **Ping**: Mede a latência média (RTT) e a porcentagem de perda de pacotes.
         * **HTTP GET**: Mede o tempo de carregamento da página e captura o código de status HTTP.
@@ -17,12 +19,11 @@ A arquitetura da solução é dividida em três componentes principais que se co
 2.  **Banco de Dados (`postgres-db`)**:
     * Uma instância do PostgreSQL.
     * Armazena os dados históricos das métricas coletadas pelo agente.
-    * Possui duas tabelas principais: `ping_metrics` e `web_metrics`.
     * Serve como fonte de dados (Data Source) para o Grafana.
 
 3.  **Visualização (`grafana`)**:
     * Uma instância do Grafana.
-    * Conecta-se ao PostgreSQL para consultar os dados de monitoramento.
+    * É **automaticamente provisionada** ao iniciar para conectar-se ao PostgreSQL e para carregar um dashboard pré-configurado.
     * Exibe as métricas em dashboards visuais e interativos, permitindo a análise histórica do desempenho dos alvos.
 
 ### Diagrama da Arquitetura
@@ -34,7 +35,6 @@ A arquitetura da solução é dividida em três componentes principais que se co
 |   o dashboard)       |      | (Visualização)       |      |     - youtube.com        |
 +----------------------+      +----------------------+      |     - rnp.br             |
                                                             |     - registro.br        |
-                                                            |     - brunocaribe.com.br |
                                       ^                     +--------------------------+
                                       | (Consulta SQL)               ^
                                       |                              | (Testes de Rede)
@@ -43,20 +43,6 @@ A arquitetura da solução é dividida em três componentes principais que se co
 |  Agente de Monitor.  |----->|    PostgreSQL DB     |<--------------+
 |      (Python)        |      |    (Armazenamento)   |
 +----------------------+      +----------------------+
-```
-
-## Estrutura do Projeto
-
-```
-/
-├── agent/              # Contém o código e Dockerfile do agente
-│   ├── Dockerfile
-│   ├── agent.py
-│   └── requirements.txt
-├── postgres/           # Contém o script de inicialização do banco
-│   └── init.sql
-├── docker-compose.yml  # Orquestra todos os serviços
-└── README.md           # Esta documentação
 ```
 
 ## Como Executar
@@ -71,7 +57,7 @@ A arquitetura da solução é dividida em três componentes principais que se co
 1.  **Clone o repositório:**
     ```bash
     git clone <URL_DO_SEU_REPOSITORIO>
-    cd devops-monitoring-challenge
+    cd webmonitoringagent
     ```
 
 2.  **Suba os containers:**
@@ -80,84 +66,35 @@ A arquitetura da solução é dividida em três componentes principais que se co
     docker-compose up --build -d
     ```
 
-3.  **Verifique se os serviços estão rodando:**
-    ```bash
-    docker-compose ps
-    ```
-    Você deve ver os três containers (`monitoring-agent`, `postgres-db`, `grafana`) com o status `Up`.
-
-4.  **Acesse o Grafana:**
-    Abra seu navegador e acesse `http://localhost:3000`.
+3.  **Acesse o Grafana:**
+    * Abra seu navegador e acesse `http://localhost:3000`.
+    * Aguarde alguns instantes para que o agente colete os primeiros dados.
     * **Login:** `admin`
     * **Senha:** `admin`
-    (O Grafana pedirá para você alterar a senha no primeiro login).
+    * O Grafana pedirá para você alterar a senha no primeiro login.
 
-## Configurando o Grafana
+## Provisionamento Automático do Grafana
 
-Siga os passos abaixo para criar seu dashboard.
+**Não é necessário realizar nenhuma configuração manual no Grafana.** Graças ao mecanismo de provisioning:
 
-### 1. Adicionar o PostgreSQL como Data Source
+* **Data Source:** A conexão com o banco de dados `PostgreSQL-Metrics` é criada automaticamente.
+* **Dashboard:** Um dashboard chamado **"Web & Network Monitoring"** já estará disponível na página inicial, pronto para uso. Ele contém painéis para latência, perda de pacotes, tempo de carregamento web e um resumo dos status codes HTTP.
 
-* No menu lateral esquerdo, vá em **Configuration (engrenagem) > Data Sources**.
-* Clique em **"Add data source"**.
-* Selecione **"PostgreSQL"**.
-* Preencha os detalhes da conexão:
-    * **Host**: `postgres-db:5432`
-    * **Database**: `monitoring_db`
-    * **User**: `user`
-    * **Password**: `password`
-    * **SSL Mode**: `disable`
-* Clique em **"Save & test"**. Você deve ver uma mensagem de sucesso.
+## Resolução de Problemas (Troubleshooting)
 
-### 2. Criar o Dashboard
+Caso encontre algum problema, a primeira ação é sempre verificar os logs: `docker-compose logs <nome_do_servico>`.
 
-* No menu lateral, vá em **Dashboards (ícone de quatro quadrados) > New > New Dashboard**.
-* Clique em **"Add visualization"**.
+Para forçar um "reset" completo do ambiente (útil após corrigir algum arquivo de configuração):
 
-#### Exemplo de Painel: Latência Média (Ping)
-
-* **Data source**: Selecione o `PostgreSQL` que você acabou de configurar.
-* No editor de query, mude para o modo **"Code"** e insira a seguinte query SQL:
-    ```sql
-    SELECT
-      timestamp AS "time",
-      rtt_avg_ms,
-      target
-    FROM
-      ping_metrics
-    ORDER BY
-      timestamp
+1.  **Pare e remova os containers:**
+    ```bash
+    docker-compose down
     ```
-* No painel à direita, em **"Visualization"**, escolha **"Time series"**.
-* Em **"Panel title"**, coloque "Latência Média (RTT - ms)".
-* Clique em **"Apply"** no canto superior direito para salvar o painel.
-
-#### Exemplo de Painel: Tempo de Carregamento (Web)
-
-* Adicione um novo painel.
-* Use a seguinte query:
-    ```sql
-    SELECT
-      timestamp AS "time",
-      load_time_ms,
-      url
-    FROM
-      web_metrics
-    ORDER BY
-      timestamp
+2.  **Remova o volume de dados do Postgres (isso apagará o banco de dados):**
+    ```bash
+    docker volume rm webmonitoringagent_postgres-data
     ```
-* Configure a visualização como **"Time series"** e dê um título como "Tempo de Carregamento Web (ms)".
-* Clique em **"Apply"**.
-
-**Continue adicionando painéis para as outras métricas (perda de pacotes, status code) da mesma forma!**
-
-### 5. Parando a Aplicação
-
-Para parar todos os containers, execute:
-```bash
-docker-compose down
-```
-Para remover também os volumes (perdendo todos os dados), execute:
-```bash
-docker-compose down -v
-```
+3.  **Suba o ambiente novamente:**
+    ```bash
+    docker-compose up --build -d
+    ```
