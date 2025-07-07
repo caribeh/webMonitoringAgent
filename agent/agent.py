@@ -66,7 +66,11 @@ def measure_ping(host):
         packet_loss_line = re.search(r"(\d+)% packet loss", output)
 
         rtt_avg = float(rtt_line.group(2)) if rtt_line else None
-        packet_loss = float(packet_loss_line.group(1)) if packet_loss_line else None
+
+        if packet_loss_line:
+            packet_loss = float(packet_loss_line.group(1))
+        else:
+            packet_loss = None
 
         return rtt_avg, packet_loss
 
